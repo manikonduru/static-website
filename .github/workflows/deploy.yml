@@ -31,6 +31,7 @@ jobs:
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: "1.5.0"
+          terraform_wrapper: false
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -55,26 +56,24 @@ jobs:
           TF_VAR_bucket_name: ${{ secrets.SITE_BUCKET_NAME }}
         run: terraform apply tfplan
 
-      - name: Read Terraform outputs
-        id: tfoutputs
-        working-directory: terraform
+      - name: Get outputs
+        id: tf
         run: |
-          terraform output -json > /tmp/outputs.json
-          BUCKET=$(jq -r '.bucket_name.value' /tmp/outputs.json)
-          DIST_ID=$(jq -r '.cloudfront_distribution_id.value' /tmp/outputs.json)
-          echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
-          echo "distribution_id=$DIST_ID" >> $GITHUB_OUTPUT
+          cd terraform
+          echo "BUCKET=$(terraform output -raw bucket_name)" >> $GITHUB_ENV
+          echo "DIST_ID=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_ENV
+          echo "DOMAIN=$(terraform output -raw cloudfront_domain)" >> $GITHUB_ENV
 
       - name: Sync site to S3
         run: |
-          aws s3 sync site/ s3://${{ steps.tfoutputs.outputs.bucket }} --delete
+          aws s3 sync site/ s3://$BUCKET --delete
 
       - name: Invalidate CloudFront cache
         run: |
-          aws cloudfront create-invalidation --distribution-id ${{ steps.tfoutputs.outputs.distribution_id }} --paths "/*"
+          aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
       
       - name: Output deployment info
         run: |
           echo "✅ Deployment complete!"
-          echo "Site bucket: ${{ steps.tfoutputs.outputs.bucket }}"
-          echo "CloudFront domain: https://$(cd terraform && terraform output -raw cloudfront_domain)"
+          echo "Site bucket: $BUCKET"
+          echo "CloudFront domain: https://$DOMAIN"
