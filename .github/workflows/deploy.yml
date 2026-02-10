@@ -61,8 +61,14 @@ jobs:
         run: |
           BUCKET=$(terraform output -raw bucket_name)
           DIST_ID=$(terraform output -raw cloudfront_distribution_id)
-          echo "bucket=${BUCKET}" >> $GITHUB_OUTPUT
-          echo "distribution_id=${DIST_ID}" >> $GITHUB_OUTPUT
+          {
+            echo "bucket<<EOF"
+            echo "$BUCKET"
+            echo "EOF"
+            echo "distribution_id<<EOF"
+            echo "$DIST_ID"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Sync site to S3
         run: |
