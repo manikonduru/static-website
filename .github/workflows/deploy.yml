@@ -1,0 +1,71 @@
+name: Deploy static site
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  validate-secrets:
+    name: Validate required secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check AWS credentials
+        run: |
+          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] || [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] || [ -z "${{ secrets.AWS_REGION }}" ]; then
+            echo "❌ Missing required secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION"
+            exit 1
+          fi
+      - name: Secrets validation passed
+        run: echo "✓ All required secrets present"
+
+  deploy:
+    needs: validate-secrets
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: "1.5.0"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: terraform
+        env:
+          TF_VAR_bucket_name: ${{ secrets.SITE_BUCKET_NAME }}
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: terraform
+        env:
+          TF_VAR_bucket_name: ${{ secrets.SITE_BUCKET_NAME }}
+        run: terraform apply tfplan
+
+      - name: Read Terraform outputs
+        id: tfoutputs
+        working-directory: terraform
+        run: |
+          echo "bucket=$(terraform output -raw bucket_name)" >> $GITHUB_OUTPUT
+          echo "distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_OUTPUT
+
+      - name: Sync site to S3
+        run: |
+          aws s3 sync site/ s3://${{ steps.tfoutputs.outputs.bucket }} --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ steps.tfoutputs.outputs.distribution_id }} --paths "/*"
