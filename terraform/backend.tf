@@ -1,6 +1,6 @@
 terraform {
   backend "s3" {
-    bucket         = "mani-terraform-state-2025"
+    bucket         = "mani-static-terraform"
     key            = "static-site/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
