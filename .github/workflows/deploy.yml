@@ -59,16 +59,11 @@ jobs:
         id: tfoutputs
         working-directory: terraform
         run: |
-          BUCKET=$(terraform output -raw bucket_name)
-          DIST_ID=$(terraform output -raw cloudfront_distribution_id)
-          {
-            echo "bucket<<EOF"
-            echo "$BUCKET"
-            echo "EOF"
-            echo "distribution_id<<EOF"
-            echo "$DIST_ID"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+          terraform output -json > /tmp/outputs.json
+          BUCKET=$(jq -r '.bucket_name.value' /tmp/outputs.json)
+          DIST_ID=$(jq -r '.cloudfront_distribution_id.value' /tmp/outputs.json)
+          echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
+          echo "distribution_id=$DIST_ID" >> $GITHUB_OUTPUT
 
       - name: Sync site to S3
         run: |
